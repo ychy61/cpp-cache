@@ -1,193 +1,205 @@
 #include "cache.h"
 
-Cache::Cache() : head(nullptr), size(0) {}
+// Cache constructor implementation
+Cache::Cache() {
+      for (int i = 0; i < HASH_SIZE; ++i) {
+            hashTable[i] = nullptr;
+      }
+      head = nullptr;
+      size = 0;
+}
 
+// Cache destructor implementation
 Cache::~Cache() {
-      Node* current = head;
-      //노드들을 순차적으로 제거
-      while (current != nullptr) {
-            Node* next = current->next;
-            delete current;
-            current = next;
+      for (int i = 0; i < HASH_SIZE; ++i) {
+            Node* current = hashTable[i];
+            while (current != nullptr) {
+                  Node* next = current->next;
+                  delete current;
+                  current = next;
+            }
       }
 }
 
 void Cache::add(std::string key, int value) {
-      Node* current = head;
+      int index = hashFunction(key);
+      Node* current = hashTable[index];
       Node* previous = nullptr;
 
-      //캐시에 추가하려는 키 값이 이미 있는지 확인
       while (current != nullptr && current->key != key) {
             previous = current;
             current = current->next;
       }
 
-      //같은 키를 가진 노드가 있으면,
       if (current != nullptr) {
-            //기존 노드의 value가 void* 타입이므로 이를 int*로 캐스팅
-            delete static_cast<int*>(current->value);
-            //int인 value를 값을 new를 통해 동적으로 할당하여 void*에 저장할 수 있도록 함
-            current->value = new int(value);
-            //노드를 리스트의 앞쪽으로 이동
-            addHead(current, previous);
-      } else { //같은 키를 가진 노드가 없다면,
-            //새로운 노드를 캐시에 추가한다.
+            if (current->type == "int") {
+                  *static_cast<int*>(current->value) = value;
+            } else {
+                  delete static_cast<double*>(current->value);
+                  current->value = new int(value);
+                  current->type = "int";
+            }
+            addHead(current, previous, index);
+      } else {
             Node* newNode = new Node(key, value);
-            newNode->next = head;
-            head = newNode;
+            newNode->next = hashTable[index];
+            hashTable[index] = newNode;
+            addHead(newNode, nullptr, index);
             ++size;
 
-            // 현재 캐시의 사이즈가 캐시의 전체 사이보다 커지면
             if (size > CACHE_SIZE) {
-                  //tail 노드를 삭제한다.
                   removeTail();
             }
       }
 }
 
 void Cache::add(std::string key, double value) {
-      Node* current = head;
+      int index = hashFunction(key);
+      Node* current = hashTable[index];
       Node* previous = nullptr;
 
-      //캐시에 추가하려는 키 값이 이미 있는지 확인
       while (current != nullptr && current->key != key) {
             previous = current;
             current = current->next;
       }
 
-      //같은 키를 가진 노드가 있으면,
       if (current != nullptr) {
-            //노드를 리스트의 앞쪽으로 이동시킴
-            delete static_cast<double*>(current->value);
-            current->value = new double(value);
-            addHead(current, previous);
-      }  else {
-            //같은 키를 가진 노드가 없다면,
-            //새로운 노드를 캐시에 추가한다.
+            if (current->type == "double") {
+                  *static_cast<double*>(current->value) = value;
+            } else {
+                  delete static_cast<int*>(current->value);
+                  current->value = new double(value);
+                  current->type = "double";
+            }
+            addHead(current, previous, index);
+      } else {
             Node* newNode = new Node(key, value);
-            newNode->next = head;
-            head = newNode;
+            newNode->next = hashTable[index];
+            hashTable[index] = newNode;
+            addHead(newNode, nullptr, index);
             ++size;
 
-            // 현재 캐시의 사이즈가 캐시의 전체 사이보다 커지면
             if (size > CACHE_SIZE) {
-                  //tail 노드를 삭제한다.
                   removeTail();
             }
       }
 }
 
-
 bool Cache::get(std::string key, int& value) {
-      Node* current = head;
+      int index = hashFunction(key);
+      Node* current = hashTable[index];
       Node* previous = nullptr;
 
-      while (current != nullptr && current->key != key) {
+      while (current != nullptr) {
+            if (current->key == key && current->type == "int") {
+                  value = *static_cast<int*>(current->value);
+                  addHead(current, previous, index);
+                  return true;
+            }
             previous = current;
             current = current->next;
       }
-
-      // 캐시에 없으면
-      if (current == nullptr) {
-            return false;
-      } else {
-            // 캐시에 있으면
-            // int*로 캐스팅하여 값을 얻음
-            value = *static_cast<int*>(current->value);
-            addHead(current, previous);
-            return true;
-      }
+      return false;
 }
 
-
-// double 타입의 값을 캐시에서 가져옴
 bool Cache::get(std::string key, double& value) {
-      Node* current = head;
+      int index = hashFunction(key);
+      Node* current = hashTable[index];
       Node* previous = nullptr;
 
-      while (current != nullptr && current->key != key) {
+      while (current != nullptr) {
+            if (current->key == key && current->type == "double") {
+                  value = *static_cast<double*>(current->value);
+                  addHead(current, previous, index);
+                  return true;
+            }
             previous = current;
             current = current->next;
       }
-
-      // 캐시에 없으면
-      if (current == nullptr) {
-            return false;
-      } else {
-            // 캐시에 있으면
-            // int*로 캐스팅하여 값을 얻음
-            value = *static_cast<double*>(current->value);
-            addHead(current, previous);
-
-            return true;
-      }
+      return false;
 }
 
-// 노드를 리스트의 앞쪽으로 이동
-void Cache::addHead(Node* node, Node* prev) {
-      if (prev == nullptr) {
-            // 노드가 이미 리스트의 앞쪽에 있음
-            return;
+void Cache::addHead(Node* node, Node* prev, int index) {
+      if (prev != nullptr) {
+            prev->next = node->next;
+      } else {
+            hashTable[index] = node->next;
       }
-
-      // 노드를 리스트의 앞쪽으로 이동
-      prev->next = node->next;
       node->next = head;
       head = node;
 }
 
-// 리스트의 마지막 노드를 제거
 void Cache::removeTail() {
-      //캐시가 비어있을때,
       if (head == nullptr) {
             return;
       }
+      Node* current = head;
+      Node* previous = nullptr;
 
-      //캐시에 노드가 1개일때,
-      if (head->next == nullptr) {
-            delete head;
-            head = nullptr;
-      } else {
-            Node* current = head;
-            Node* previous = nullptr;
-
-            //마지막 노드를 찾고
-            while (current->next != nullptr) {
-                  previous = current;
-                  current = current->next;
-            }
-
-            // 마지막 노드 삭제
-            delete current;
-            previous->next = nullptr;
-            --size;
+      while (current->next != nullptr) {
+            previous = current;
+            current = current->next;
       }
+
+      if (previous != nullptr) {
+            previous->next = nullptr;
+      } else {
+            head = nullptr;
+      }
+
+      int index = hashFunction(current->key);
+      Node* htCurrent = hashTable[index];
+      Node* htPrevious = nullptr;
+      while (htCurrent != nullptr && htCurrent != current) {
+            htPrevious = htCurrent;
+            htCurrent = htCurrent->next;
+      }
+      if (htPrevious != nullptr) {
+            htPrevious->next = current->next;
+      } else {
+            hashTable[index] = current->next;
+      }
+      delete current;
+      --size;
 }
 
-// 캐시 내용을 문자열로 반환
+int Cache::hashFunction(const std::string& key) {
+      int sum = 0;
+      for (int i = 0; i <key.length(); i++){
+            sum += key[i];
+      }
+      return sum % HASH_SIZE;
+}
+
 std::string Cache::toString() {
       std::ostringstream oss;
       Node* current = head;
+      int taskNumber = 0;
       while (current != nullptr) {
-            oss << "[" << current->key << ": ";
-
-            Node* temp = current;
+            oss << "[TASK #" << taskNumber++ << "]\n";
+            oss << current->key << " = ";
+            if (current->type == "int") {
+                  oss << *static_cast<int*>(current->value);
+            } else if (current->type == "double") {
+                  oss << std::scientific << *static_cast<double*>(current->value);
+            }
+            oss << "\n\n[CACHE]\n";
+            Node* temp = head;
             while (temp != nullptr) {
-                  if (temp->type == "int") {
-                        oss << *static_cast<int*>(temp->value);
+                  oss << "[" << temp->key << ": ";
+                  if (temp-> type == "int") {
+                  oss << *static_cast<int*>(temp->value);
                   } else if (temp->type == "double") {
-                        oss << *static_cast<double*>(temp->value);
+                  oss << std::scientific << *static_cast<double*>(temp->value);
                   }
-
-                  temp = temp->nextValue;
-            }
-            oss << "]";
-            current = current->next;
-            // 다음 노드가 있으면,
-            if (current != nullptr) {
+                  oss << "]";
+                  temp = temp->next;
+                  if (temp != nullptr) {
                   oss << " -> ";
+                  }
             }
+            oss << "\n\n";
+            current = current->next;
       }
-      oss << "\n";
       return oss.str();
 }
